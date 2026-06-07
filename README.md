@@ -62,3 +62,4 @@ The lab extends into physical hardware to provide "at-a-glance" diagnostics:
 - `/scripts`: Custom Python and Bash tooling for lab management.
 - `/pico`: C++ source code for the RP2350 Satellite Node.
 - `/docs`: Schematics, security audit logs, and hardware diagrams.
+- `/pictures`: Pictures used in readme files through the repository

@@ -1,0 +1,13 @@
+services:
+  mood-final:
+    build: .
+    container_name: mood-final
+    network_mode: host
+    environment:
+      - DB_PASSWORD=${DB_PASSWORD}
+      - APP_SECRET_KEY=${APP_SECRET_KEY}
+      - DB_NAME=homelabdb
+      - DB_USER=postgres
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    restart: unless-stopped

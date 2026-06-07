@@ -1,0 +1,15 @@
+# Secret files
+.env
+*.db
+*.sqlite3
+*.key
+*.crt
+*.pem
+
+# Python junk
+__pycache__/
+*.py[cod]
+
+# Logs
+*.log
+docker/decoy-web/logs/
