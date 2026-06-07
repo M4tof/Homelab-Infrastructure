@@ -1,33 +1,64 @@
 # Secure Edge Homelab (RPi5)
 
-A comprehensive personal infrastructure project focusing on **DevOps, Security, and Embedded Systems integration.** This repository documents the architecture, automation scripts, and orchestration of my home-based server environment.
+A comprehensive personal infrastructure project focusing on **Zero-Trust Networking, System Hardening, and Embedded Telemetry.** This repository serves as the technical documentation for my 24/7 home-based server environment.
 
-## 🛠 Tech Stack
-- **Compute:** Raspberry Pi 5 (4GB) | Debian Bookworm
-- **Storage:** 128GB NVMe SSD (PCIe Gen 3) | 512GB USB Backup
-- **Orchestration:** Docker & Dockge
-- **Networking:** Tailscale (Zero Trust VPN), UFW (Uncomplicated Firewall)
-- **Monitoring:** Zabbix, Grafana, Netdata, Scrutiny
-- **Database:** PostgreSQL (Bare-metal for performance)
+## 🛠️ The Hardware Stack
+| Component | Specification |
+| :--- | :--- |
+| **Compute** | Raspberry Pi 5 (4GB RAM) |
+| **Primary Storage** | 128GB Kingston NVMe SSD (PCIe Gen 3 ~867 MB/s) |
+| **Backup Storage** | 512GB External HDD |
+| **Telemetry Node** | Raspberry Pi Pico 2 W (RP2350) |
+| **Cooling** | Official RPi Active Cooler |
 
-## 🔐 Security Architecture (Cybersecurity Focus)
-As a student pursuing a Master's in Cybersecurity, this lab serves as a testing ground for hardening and monitoring:
-- **The Honeypot ("The Trap"):** An Nginx decoy landing page on Port 80. Accessing `/admin/` triggers an immediate `ntfy` alert to my mobile device via a custom watcher service.
-- **Access Control:** No open ports on the public internet. Remote access is strictly managed via **Tailscale VPN**.
-- **Hardening:** Current Lynis Hardening Index of **71**. Implemented `Fail2Ban` for SSH and `ClamAV` for malware detection.
-- **Audit Automation:** Custom `lab-audit` alias triggers automated Lynis scans and security reporting.
+![RPi5 Hardware Close-up](pictures/rpi.jpeg)
+*Core unit with high-speed NVMe HAT integration.*
 
-## 🤖 Automation & Monitoring
-I consider myself an "Engineer first, Programmer second." If a task is repeatable, it is automated:
-- **Custom CLI Tooling:** Developed a suite of bash aliases for system health, backup management, and automated security patching.
-- **Proactive Monitoring:** Hardware health is tracked via Netdata with a thermal ceiling alert set at 70°C, since in manual tests the temperature has yet to climb over 66°C
-- **Data Integrity:** Daily automated backups to an external encrypted drive with S.M.A.R.T. monitoring via Scrutiny.
+---
 
-## 📟 Hardware Integration
-- **Micro-Controller Interface:** Integrated a **Raspberry Pi Pico 2 W** acting as a physical telemetry dashboard (LCD & 7-Segment display) communicating via MQTT.
-- **Device Management:** CUPS controll for legacy HP printer.
+## 🔐 Security Architecture (Defense-in-Depth)
+As a Master's student in Cybersecurity, I use this lab as a sandbox for implementing and testing enterprise-level security protocols:
+
+*   **Zero-Trust Access:** No ports are exposed to the public internet. All remote management is handled via an encrypted **Tailscale VPN** tunnel.
+*   **The HoneyPot ("The Trap"):** A custom-designed Nginx decoy on Port 80. Automated scanning of sensitive directories like `/admin/` triggers an immediate **ntfy.sh** push notification to my mobile device via a custom-built Bash watcher service.
+*   **System Hardening:** Current **Lynis Hardening Index: 71**. 
+    *   Implemented `Fail2Ban` for SSH protection.
+    *   `ClamAV` daemon for real-time malware monitoring.
+    *   Automated security patching via `unattended-upgrades`.
+*   **Firewall Orchestration:** Strict UFW policies managing traffic between the local LAN, Docker bridges, and the Tailscale interface.
+
+---
+
+## 🤖 DevOps & Monitoring
+I follow the "Engineer First" philosophy: if a task is repeatable, it must be automated and monitored.
+
+*   **Automation:** A suite of custom Bash aliases and Python scripts handles daily backups, port audits, and remote wake-up (WoL) for laboratory workstations.
+*   **Database Management:** Bare-metal **PostgreSQL** for high-performance data storage, utilized by custom Flask applications.
+*   **Visualization:** **Grafana** dashboards visualize everything from personal mood tracking to real-time hardware metrics.
+*   **Proactive Alerts:** Thermal health is monitored via **Netdata** with a 70°C ceiling alert (Stable operation @ ~63°C under sustained load).
+
+![Satellite Node Detail](pictures/pico.jpeg)
+*Real-time telemetry display showing CPU temp, RAM utilization, and storage health.*
+
+---
+
+## 📟 Hardware & IoT Integration
+The lab extends into physical hardware to provide "at-a-glance" diagnostics:
+
+*   **Pico 2 W Satellite:** An autonomous node running C++ on the RP2350 (ARM/RISC-V) that communicates with the Pi 5 via **MQTT**.
+*   **Physical Dashboard:** 
+    *   **16x2 I2C LCD:** Displays system uptime, RAM usage, and thermal delta.
+    *   **Multiplexed 7-Segment Display:** Accurate server-time clock synced via NTP.
+    *   **Grave-Light Warning System:** An integrated LED cluster that uses a transistor-switched flicker effect as a physical alarm for system distress.
+*   **Print Server:** CUPS implementation for a legacy HP LaserJet P1102 with automated firmware injection.
+
+![Full Lab Setup](pictures/full_lab.jpeg)
+*The complete HomeLab ecosystem: Compute, Storage, and Satellite Telemetry.*
+
+---
 
 ## 📁 Repository Structure
-- `/docker`: Docker Compose blueprints for the service stack.
-- `/scripts`: Bash scripts for backups, honeypot monitoring, and system management.
-- `/docs`: Detailed system documentation and hardware diagrams.
+- `/docker`: Docker Compose blueprints for the full service stack (Heimdall, Mealie, etc.).
+- `/scripts`: Custom Python and Bash tooling for lab management.
+- `/pico`: C++ source code for the RP2350 Satellite Node.
+- `/docs`: Schematics, security audit logs, and hardware diagrams.
