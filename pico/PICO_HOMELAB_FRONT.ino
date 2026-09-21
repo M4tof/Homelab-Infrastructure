@@ -15,7 +15,7 @@
 #include <HTTPClient.h>
 #include "secrets.h" // Import your credentials !!!
 
-#define FIRMWARE_VERSION 5 //Personal note, to see if firmware updates succesfully
+#define FIRMWARE_VERSION 7 //Personal note, to see if firmware updates succesfully
 
 // ==========================================
 // 1. CONFIGURATION & NETWORK SETUP
@@ -33,7 +33,9 @@ const char* DISPLAYN   = DISPLAY_NAME;
 // 7-Segment Pins (Common Anode/Cathode depending on wiring)
 const int DIGITS[]   = {16, 19, 20, 11};           // Pins controlling which digit is ON
 const int ALL_SEGS[] = {17, 21, 13, 14, 15, 18, 12}; // Pins controlling A-G segments
-const int ALARM_PIN  = 10;                         // Physical LED or Buzzer pin
+const int ALARM_PIN_R  = 7;                         // Physical LED pin Red
+const int ALARM_PIN_G = 10;                         // Physical LED pin Green
+const int ALARM_PIN_B = 2;                         // Physical LED pin Blue
 const int SEG_DP     = 9;                          // Decimal point pin
 const int PHOTO_RES_PIN  = 26;                          // Photoresistor pin
 
@@ -50,16 +52,24 @@ volatile unsigned long lastDiagSend = 0;      // Timestamp for Serial diagnostic
 volatile unsigned long lastLCDUpdate = 0;     // Timestamp for last custome "c" message
 volatile int currentLightLevel = 0;           // Detected 'light value' in the room
 bool alertSent = false;                       // Prevents spamming NTFY notifications
-bool manualAlertActive = false;               // Manual Alert signal from RPI
-bool manualJustLED = false;
+
+//OLD:
+//bool manualAlertActive = false;               // Manual Alert signal from RPI
+//bool manualJustLED = false;
+
+int currentAlarmState = 0; // 0=Off, 1=Red(Critical), 2=Green(Info), 3=Blue(Reserved)
 
 int local_hh = 0; // Current hour
 int local_mm = 0; // Current minute
 
+// for lcd and api
+String currentLcdL1 = "";
+String currentLcdL2 = "";
+
 // Backlight Management
 // 0 = Off, 1 = On, 2 = Auto (Sensor)
 int backlightMode = 2; 
-const int LIGHT_THRESHOLD = 150; 
+int LIGHT_THRESHOLD = 150; 
 
 // Custom Message Tracking
 String currentCustomMsg = "";
@@ -76,6 +86,7 @@ const bool NUM_MAP[11][7] = {
 };
 
 WiFiClient picoClient;
+WebServer server(80);
 PubSubClient mqtt(picoClient);
 
 // ==========================================
@@ -109,6 +120,16 @@ void printDiagnostics() {
 }
 
 /**
+ *  Sets the RGB led state
+ */
+
+void setRGB(bool r, bool g, bool b) {
+  digitalWrite(ALARM_PIN_R, r ? HIGH : LOW);
+  digitalWrite(ALARM_PIN_G, g ? HIGH : LOW);
+  digitalWrite(ALARM_PIN_B, b ? HIGH : LOW);
+}
+
+/**
  * Sends a push notification via NTFY.sh
  */
 void sendNtfyAlert(String message) {
@@ -125,6 +146,7 @@ void sendNtfyAlert(String message) {
 /**
  * Checks the brightness in the room.
  */
+
 int checkLocalLight(){
   long value = 0;
   for(int i = 0; i < 10; i++){
@@ -151,55 +173,34 @@ void updateLCD() {
 
     if (isCustomActive) {
         int delimiterIndex = currentCustomMsg.indexOf(MsgDelimiter);
-        
         if (delimiterIndex == -1) {
-            lcd.setCursor(0, 0);
-            lcd.print(DISPLAYN);
-            lcd.setCursor(0, 1);
-            lcd.print("                "); // Clear line
-            lcd.setCursor(0, 1);
-            lcd.print(currentCustomMsg.substring(0, 16));
-        } 
-        else {
-            String line1 = currentCustomMsg.substring(0, delimiterIndex);
-            String line2 = currentCustomMsg.substring(delimiterIndex + 1);
-
-            lcd.setCursor(0, 0);
-            lcd.print("                "); // Clear
-            lcd.setCursor(0, 0);
-            lcd.print(line1.substring(0, 16));
-
-            lcd.setCursor(0, 1);
-            lcd.print("                "); // Clear
-            lcd.setCursor(0, 1);
-            lcd.print(line2.substring(0, 16));
+            currentLcdL1 = String(DISPLAYN);
+            currentLcdL2 = currentCustomMsg.substring(0, 16);
+        } else {
+            currentLcdL1 = currentCustomMsg.substring(0, delimiterIndex);
+            currentLcdL2 = currentCustomMsg.substring(delimiterIndex + 1);
         }
-        
     } 
     else {
         int delta = currentLightLevel - LIGHT_THRESHOLD;
         char l1[17];
-        // Format: "Delta Light: +450" or "Delta Light: -120"
-        // %-5d ensures the number has space and doesn't leave "ghost" digits
         snprintf(l1, sizeof(l1), "Delta L: %-5d", delta);
-        lcd.setCursor(0, 0);
-        lcd.print("                ");
-        lcd.setCursor(0, 0);
-        lcd.print(l1);
+        currentLcdL1 = String(l1);
 
-        // --- LINE 2 LOGIC ---
         float temp = analogReadTemp();
         uint32_t totalRAM = 520 * 1024;
         uint32_t freeRAM = rp2040.getFreeHeap();
         int usedPercent = ((totalRAM - freeRAM) * 100) / totalRAM;
-
         char l2[17];
-        snprintf(l2, sizeof(l2), "T:%.1fC RAM:%d%%  ", temp, usedPercent);
-        lcd.setCursor(0, 1);
-        lcd.print("                ");
-        lcd.setCursor(0, 1);
-        lcd.print(l2);
+        snprintf(l2, sizeof(l2), "T:%.1fC RAM:%d%%", temp, usedPercent);
+        currentLcdL2 = String(l2);
     }
+
+    // Physical Update
+    lcd.setCursor(0, 0); lcd.print("                ");
+    lcd.setCursor(0, 0); lcd.print(currentLcdL1);
+    lcd.setCursor(0, 1); lcd.print("                ");
+    lcd.setCursor(0, 1); lcd.print(currentLcdL2);
 }
 
 
@@ -233,30 +234,34 @@ void callback(char* t, byte* payload, unsigned int length) {
     }
   }
 
-  // 2. Process Alarm Status ("a")
+// 2. Process Alarm Status ("a")
   if (doc.containsKey("a")) {
-      int status = doc["a"];
-      switch(status){
-        case 0:     // Manual Clear Alert
-            manualAlertActive = false;
-            // If we were in an alert state and it's now 0, reset ntfy flag
+      currentAlarmState = doc["a"];
+      
+      switch(currentAlarmState) {
+        case 0: // Normal / Clear
             if (alertSent) {
                 sendNtfyAlert("System Status: OK (Manual Clear)");
                 alertSent = false;
             }
             break;
-        case 1: // Raise Alert Real
-            manualAlertActive = true;
-            Serial.println("!!! ALERT: Pi reported status 1 (CRITICAL) !!!");
+            
+        case 1: // Critical (Red)
+            Serial.println("!!! ALERT: Pi reported status 1 (CRITICAL RED) !!!");
             break;
-        case 2:   // Raise Alert, just LED
-            manualJustLED = true;
+            
+        case 2: // Info (Green)
+            Serial.println("STATUS: Green Info indicator active.");
             break;
-        default:  // Lower Alert, just LED
-            manualJustLED = false;
+            
+        case 3: // Reserved (Blue)
+            Serial.println("STATUS: Blue indicator active.");
+            break;
+            
+        default:
+            currentAlarmState = 0;
             break;
       }
-
   }
 
   // 3. Process Custom LCD Message ("c" key)
@@ -299,6 +304,85 @@ void reconnect() {
   }
 }
 
+void handleApi() {
+    JsonDocument doc;
+    
+    // System Info
+    doc["device"] = DISPLAYN;
+    doc["firmware"] = FIRMWARE_VERSION;
+    doc["uptime_s"] = millis() / 1000;
+    
+    // Time Data
+    char timeBuf[6];
+    snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", local_hh, local_mm);
+    doc["local_time"] = timeBuf;
+    doc["hour"] = local_hh;
+    doc["minute"] = local_mm;
+
+    // LCD Current State
+    JsonObject lcdData = doc.createNestedObject("lcd_display");
+    lcdData["line1"] = currentLcdL1;
+    lcdData["line2"] = currentLcdL2;
+
+    // Sensors & Status
+    doc["light_level"] = currentLightLevel;
+    doc["temp_c"] = analogReadTemp();
+    doc["free_ram_bytes"] = rp2040.getFreeHeap();
+    doc["mqtt_connected"] = mqtt.connected();
+    doc["backlight_mode"] = backlightMode;
+
+    // Alarm status
+    doc["led_status"] = currentAlarmState;
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void handleUpdateConfig() {
+    if (server.hasArg("plain") == false) {
+        server.send(400, "application/json", "{\"error\": \"Body missing\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+
+    if (error) {
+        server.send(400, "application/json", "{\"error\": \"Invalid JSON\"}");
+        return;
+    }
+
+    // Example: Update Backlight Mode
+    if (doc.containsKey("backlight_mode")) {
+        int newMode = doc["backlight_mode"];
+        // Validation: 0, 1, or 2
+        if (newMode >= 0 && newMode <= 2) {
+            backlightMode = newMode;
+            Serial.print("Backlight Mode updated via API to: ");
+            Serial.println(backlightMode);
+        } else {
+            server.send(400, "application/json", "{\"error\": \"Invalid mode. Use 0, 1, or 2\"}");
+            return;
+        }
+    }
+
+    // You can add more keys here later (e.g., LIGHT_THRESHOLD)
+    if (doc.containsKey("threshold")) {
+        LIGHT_THRESHOLD = doc["threshold"];
+    }
+
+    // Send Success Response
+    String response;
+    JsonDocument resDoc;
+    resDoc["status"] = "success";
+    resDoc["current_backlight_mode"] = backlightMode;
+    resDoc["current_threshold"] = LIGHT_THRESHOLD;
+    serializeJson(resDoc, response);
+    
+    server.send(200, "application/json", response);
+}
+
 // ==========================================
 // 5. CORE 0: NETWORK, LOGIC & LCD (Main Loop)
 // ==========================================
@@ -310,7 +394,9 @@ void setup() {
   Serial.println(FIRMWARE_VERSION);
   Serial.println("================================");
 
-  pinMode(ALARM_PIN, OUTPUT);
+  pinMode(ALARM_PIN_R, OUTPUT);
+  pinMode(ALARM_PIN_G, OUTPUT);
+  pinMode(ALARM_PIN_B, OUTPUT);
   analogReadResolution(12);
   
   // LCD Init
@@ -322,6 +408,16 @@ void setup() {
   setup_wifi();
   mqtt.setServer(MQTT_SERVER, 1883);
   mqtt.setCallback(callback);
+
+  server.on("/api", handleApi);
+  server.on("/api/config", HTTP_POST, handleUpdateConfig);
+  server.on("/", []() {
+    server.send(200, "text/plain", "Pico 2 W is running. Go to /api for JSON data or /api/config to update config values.");
+  });
+  server.begin();
+  Serial.println("HTTP server started");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
   
   lastHeartbeat = millis();
   lastLocalTick = millis();
@@ -333,6 +429,8 @@ void loop() {
   if (!mqtt.connected()) reconnect();
   mqtt.loop();
 
+  server.handleClient();
+  
   // 0. gather local sensor data
   currentLightLevel = checkLocalLight();
 
@@ -348,8 +446,8 @@ void loop() {
   // 2. WATCHDOG & ALARM, if RPI sends manual alarm or if RPI detected as down
   bool watchdogTimeout = (millis() - lastHeartbeat > 120000);
 
-  if (watchdogTimeout || manualAlertActive) {
-    digitalWrite(ALARM_PIN, HIGH);
+  if (watchdogTimeout || currentAlarmState == 1) {
+    setRGB(true, false, false);
     
     if (!alertSent) {
         String reason = watchdogTimeout ? "Watchdog Timeout" : "Pi Status 1";
@@ -361,11 +459,17 @@ void loop() {
         alertSent = true;
     }
   } 
-  else if (manualJustLED){
-    digitalWrite(ALARM_PIN, HIGH);
+  else if (currentAlarmState == 2) {
+    // Info: Turn GREEN ON, others OFF
+    setRGB(false, true, false);
+  } 
+  else if (currentAlarmState == 3) {
+    // Reserved: Turn BLUE ON, others OFF
+    setRGB(false, false, true);
   } 
   else {
-    digitalWrite(ALARM_PIN, LOW);
+    // All Clear: Turn all OFF
+    setRGB(false, false, false);
   }
 
     // 3. Backlight Smart Logic
