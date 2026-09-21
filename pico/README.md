@@ -28,3 +28,9 @@ The project leverages the dual-core RP2350 to ensure high-performance UI and non
 The node provides a lightweight HTTP server for status querying and configuration:
 - `GET /api` - Returns system telemetry (uptime, temp, RAM, MQTT status, light level).
 - `POST /api/config` - Dynamically update parameters like `backlight_mode` or `LIGHT_THRESHOLD`.
+
+![v2](../pictures/pico.jpeg)
+*The first model of the node that stood for 3 months.*
+
+![v8](../pictures/pico_new.jpg)
+*The current version of the node.*
